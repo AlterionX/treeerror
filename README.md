@@ -1,7 +1,7 @@
 One Ring to rule them all
 ```rs
 // This doesn't entirely work yet
-error_tree! {
+treeerror! {
   Mordor {
     Hobbit {
       @unit Peregrin,
