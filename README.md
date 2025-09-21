@@ -82,7 +82,7 @@ between sets of enums as well as shortcutting `From` implementations.
 
 This is how to use wrapped errors.
 
-```
+```rs
 #![feature(more_qualified_paths)]
 
 use error_rules::{from_many, from};
@@ -133,7 +133,7 @@ wrapping them, we destructure the internal values instead.
 
 There are several ways to use this as well, but here's the most basic use case.
 
-```
+```rs
 #![feature(more_qualified_paths)]
 
 use error_rules::map_enum;
