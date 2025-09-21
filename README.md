@@ -45,7 +45,7 @@ error_tree! {
 One Ring to find them
 ```rs
 // This and the rest do work though!
-map_enum {
+map_enum! {
   MiddleEarth > Mordor {
     Shire = Hobbit,
     Lothlorien = Elf,
