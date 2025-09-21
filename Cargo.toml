@@ -1,5 +1,5 @@
 [package]
-name = "error-rules"
+name = "treeerror"
 version = "0.1.0"
 edition = "2021"
 
