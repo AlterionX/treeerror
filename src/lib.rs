@@ -9,7 +9,7 @@
 //! ```
 //! #![feature(more_qualified_paths)]
 //!
-//! use error_rules::{from_many, from};
+//! use treeerror::{from_many, from};
 //!
 //! #[derive(PartialEq, Debug)]
 //! enum Root {
@@ -60,7 +60,7 @@
 //! ```
 //! #![feature(more_qualified_paths)]
 //!
-//! use error_rules::map_enum;
+//! use treeerror::map_enum;
 //!
 //! #[derive(PartialEq, Eq, Debug)]
 //! pub enum ParentError {
