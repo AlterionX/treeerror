@@ -342,7 +342,6 @@ mod test {
             let s = Submap::Unit;
             match s {
                 map_enum!(@invocation pat (Submap::Unit) _a @unit ()) => {
-                    return;
                 },
                 _ => {
                     unimplemented!("`s` should get matched in the previous line.");
@@ -356,7 +355,6 @@ mod test {
             match s {
                 map_enum!(@invocation pat (Submap::I) a ()) => {
                     assert_eq!(a, 0, "Macro to properly extract the value");
-                    return;
                 },
                 _ => {
                     unimplemented!("`s` should get matched in the previous line.");
