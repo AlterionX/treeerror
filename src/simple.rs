@@ -13,6 +13,8 @@
 ///     Variant(B),
 /// }
 /// from!(A = Variant(B));
+///
+/// let a: A = B.into();
 /// ```
 ///
 /// 2) A shorthand for `From` implementations
@@ -24,6 +26,8 @@
 ///
 /// struct B(C);
 /// from!(B = |c: C| { B(c) });
+///
+/// let b: B = C.into();
 /// ```
 ///
 /// 3) shorthand for from where another can then turn into the final
@@ -44,16 +48,18 @@
 /// }
 /// from!(A = Variant(B));
 /// from!(A = C > B);
+///
+/// let a: A = C.into();
 /// ```
 #[macro_export]
 macro_rules! from {
     ($to:ty = $via:ident ( $from:ty )) => (
-        from!($to = |e: $from| {
+        $crate::from!($to = |e: $from| {
             Self::$via(e.into())
         });
     );
     ($to:ty = $from:ty > $via:ty) => (
-        from!($to = |e: $from| {
+        $crate::from!($to = |e: $from| {
             <$via>::from(e).into()
         });
     );
