@@ -109,6 +109,6 @@ mod test {
         let _: One = Child.into();
         let _: Alpha = One::from(Child).into();
         let _: A = Alpha::from(Child).into();
-        let _: Root = Root::from(Child).into();
+        let _: Root = Child.into();
     }
 }
