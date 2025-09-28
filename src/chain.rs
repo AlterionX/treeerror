@@ -135,7 +135,30 @@ macro_rules! from_chain {
 /// let a: A = B::from(C::from(D)).into();
 /// ```
 ///
-/// There is also a variant that does conversion via an intermediate type.
+/// There is also a variant that does conversion via an intermediate type. Syntax:
+/// ```
+/// use treeerror::{from_many, from};
+///
+/// struct D;
+///
+/// enum C {
+///     DVariant(D),
+/// }
+///
+/// // You can also use `from!(C = DVariant(D))`
+/// from_many!(C : DVariant, D);
+///
+/// enum B {
+///     CVariant(C),
+/// }
+///
+/// from_many!(B : CVariant, C, D);
+///
+/// struct A(B);
+///
+/// from!(A = |b: B| A(b));
+/// from_many!(A = D, C > B);
+/// ```
 #[macro_export]
 macro_rules! from_many {
     ($to:ty : $via:ident, $from:ty, $($continue:ty),+) => (

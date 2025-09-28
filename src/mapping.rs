@@ -126,67 +126,69 @@
 /// with `from_chain!` for more functionality.
 /// ```
 /// #![feature(more_qualified_paths)]
-/// use treeerror::{map_enum, from_chain, from_many};
+/// mod impls {
+///     use treeerror::{map_enum, from_chain, from_many};
 ///
-/// #[derive(Debug)]
-/// pub struct WebError;
+///     #[derive(Debug)]
+///     pub struct WebError;
 ///
-/// mod suberror0 {
-///     #[derive(Debug)]
-///     pub(super) struct MemoryError;
-///     #[derive(Debug)]
-///     pub(super) enum E {
+///     pub mod suberror0 {
+///         #[derive(Debug)]
+///         pub struct MemoryError;
+///         #[derive(Debug)]
+///         pub enum E {
+///             NotFound,
+///             Web(super::WebError),
+///             Memory(MemoryError),
+///         }
+///     }
+///
+///     pub mod suberror1 {
+///         #[derive(Debug)]
+///         pub struct MemoryError;
+///         #[derive(Debug)]
+///         pub enum WrappedMemoryError {
+///             SomeError(MemoryError),
+///         }
+///         #[derive(Debug)]
+///         pub enum E {
+///             Web(super::WebError),
+///             Memory(WrappedMemoryError),
+///             WeirdInternalErrorThatShouldNotBeSurfaced,
+///         }
+///     }
+///
+///     pub enum SharedError {
 ///         NotFound,
-///         Web(super::WebError),
-///         Memory(MemoryError),
+///         Web(WebError),
+///         Memory0(suberror0::MemoryError),
+///         Memory1(suberror1::MemoryError),
 ///     }
+///
+///     map_enum!(suberror0::E > SharedError {
+///         @unit NotFound,
+///         Web,
+///         Memory > Memory0,
+///     });
+///
+///     map_enum!(suberror1::E > SharedError {
+///         Web,
+///         Memory = (a) {
+///             let suberror1::WrappedMemoryError::SomeError(e) = a else {
+///                 unreachable!("only one variant exists");
+///             };
+///             SharedError::Memory1(e)
+///         },
+///     } |e| {
+///         panic!("this should not happen... {e:?}")
+///     });
+///
+///     from_chain!(SharedError : Memory0, suberror0::MemoryError);
+///     from_many!(SharedError = suberror1::WrappedMemoryError, suberror1::MemoryError > suberror1::E);
+///     from_chain!(suberror1::E : Memory, suberror1::WrappedMemoryError : SomeError, suberror1::MemoryError);
 /// }
 ///
-/// mod suberror1 {
-///     #[derive(Debug)]
-///     pub(super) struct MemoryError;
-///     #[derive(Debug)]
-///     pub(super) enum WrappedMemoryError {
-///         SomeError(MemoryError),
-///     }
-///     #[derive(Debug)]
-///     pub(super) enum E {
-///         Web(super::WebError),
-///         Memory(WrappedMemoryError),
-///         WeirdInternalErrorThatShouldNotBeSurfaced,
-///     }
-/// }
-///
-/// enum SharedError {
-///     NotFound,
-///     Web(WebError),
-///     Memory0(suberror0::MemoryError),
-///     Memory1(suberror1::MemoryError),
-/// }
-///
-/// map_enum!(suberror0::E > SharedError {
-///     @unit NotFound,
-///     Web,
-///     Memory > Memory0,
-/// });
-///
-/// map_enum!(suberror1::E > SharedError {
-///     Web,
-///     Memory = (a) {
-///         let suberror1::WrappedMemoryError::SomeError(e) = a else {
-///             unreachable!("only one variant exists");
-///         };
-///         SharedError::Memory1(e)
-///     },
-/// } |e| {
-///     panic!("this should not happen... {e:?}")
-/// });
-///
-/// from_chain!(SharedError : Memory0, suberror0::MemoryError);
-/// from_many!(SharedError = suberror1::WrappedMemoryError, suberror1::MemoryError > suberror1::E);
-/// from_chain!(suberror1::E : Memory, suberror1::WrappedMemoryError : SomeError, suberror1::MemoryError);
-///
-/// let m: SharedError = suberror1::MemoryError.into();
+/// let m: impls::SharedError = impls::suberror1::MemoryError.into();
 ///
 /// ```
 #[macro_export]
@@ -198,16 +200,16 @@ macro_rules! map_enum {
         impl From<$from> for $to {
             fn from(e: $from) -> Self {
                 match e {
-                    $(map_enum!(@coerce pat map_enum!(
+                    $($crate::map_enum!(@coerce pat $crate::map_enum!(
                         @invocation pat
                         (<$from>::$match)
                         __some_tok
                         $(@$m)*
                         ($($($p),*)?)
                     )) => {
-                        map_enum!(
+                        $crate::map_enum!(
                             @invocation expr
-                            (map_enum!(@unwrap_opt $($wrap)? $match (<$to>::)))
+                            ($crate::map_enum!(@unwrap_opt $($wrap)? $match (<$to>::)))
                             __some_tok
                             $(@$m)*
                             ($($($p),*)?)
@@ -252,7 +254,7 @@ macro_rules! map_enum {
         $($path)+ ($escaped.into())
     );
     (@invocation expr ($($path:tt)+) $escaped:ident @conv ($($tail:tt)+)) => (
-        map_enum!(@paramlist ($($path)+) $($tail)+)
+        $crate::map_enum!(@paramlist ($($path)+) $($tail)+)
     );
     (@invocation expr ($($path:tt)+) $escaped:ident $(@$m:ident)* ()) => (
         $($path)+ ($escaped)
