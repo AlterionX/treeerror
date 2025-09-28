@@ -1,9 +1,185 @@
+/// Shorthand for mapping one error enum on top of another one.
+///
+/// This takes things like:
+/// ```
+/// struct Child0;
+/// struct Child1;
+/// struct Child2;
+/// struct Child3;
+/// struct Child4;
+///
+/// enum Root {
+///     ChildVariant0(Child0),
+///     ChildVariant1(Child1),
+///     ChildVariant2(Child2),
+///     ChildVariant3(Child3),
+///     ChildVariant4(Child4),
+/// }
+///
+/// enum SimilarRoot {
+///     ChildVariant0(Child0),
+///     ChildVariant1(Child1),
+///     ChildVariant2(Child2),
+///     ChildVariant3(Child3),
+///     ChildVariant4(Child4),
+/// }
+///
+/// impl From<SimilarRoot> for Root {
+///     fn from(r: SimilarRoot) -> Self {
+///         match r {
+///             SimilarRoot::ChildVariant0(c) => Self::ChildVariant0(c),
+///             SimilarRoot::ChildVariant1(c) => Self::ChildVariant1(c),
+///             SimilarRoot::ChildVariant2(c) => Self::ChildVariant2(c),
+///             SimilarRoot::ChildVariant3(c) => Self::ChildVariant3(c),
+///             SimilarRoot::ChildVariant4(c) => Self::ChildVariant4(c),
+///         }
+///     }
+/// }
+/// ```
+/// and changes it into:
+/// ```
+/// #![feature(more_qualified_paths)]
+/// use treeerror::map_enum;
+///
+/// struct Child0;
+/// struct Child1;
+/// struct Child2;
+/// struct Child3;
+/// struct Child4;
+///
+/// enum Root {
+///     ChildVariant0(Child0),
+///     ChildVariant1(Child1),
+///     ChildVariant2(Child2),
+///     ChildVariant3(Child3),
+///     ChildVariant4(Child4),
+/// }
+///
+/// enum SimilarRoot {
+///     ChildVariant0(Child0),
+///     ChildVariant1(Child1),
+///     ChildVariant2(Child2),
+///     ChildVariant3(Child3),
+///     ChildVariant4(Child4),
+/// }
+///
+/// map_enum!(SimilarRoot > Root {
+///     ChildVariant0,
+///     ChildVariant1,
+///     ChildVariant2,
+///     ChildVariant3,
+///     ChildVariant4,
+/// });
+/// ```
+///
+/// As well as changing things like:
+/// ```
+/// struct Child0;
+/// struct Child1;
+///
+/// enum Root {
+///     ChildVariant0Rename(Child0, Child1),
+///     ChildVariant1(Child1, Child0),
+/// }
+///
+/// enum SimilarRoot {
+///     ChildVariant0(Child0, Child1),
+///     ChildVariant1(Child1, Child0),
+/// }
+///
+/// impl From<SimilarRoot> for Root {
+///     fn from(r: SimilarRoot) -> Self {
+///         match r {
+///             SimilarRoot::ChildVariant0(a, b) => Self::ChildVariant0Rename(a, b),
+///             SimilarRoot::ChildVariant1(a, b) => Self::ChildVariant1(a, b),
+///         }
+///     }
+/// }
+/// ```
+/// into:
+/// ```
+/// #![feature(more_qualified_paths)]
+/// use treeerror::map_enum;
+///
+/// struct Child0;
+/// struct Child1;
+///
+/// enum Root {
+///     ChildVariant0Rename(Child0, Child1),
+///     ChildVariant1(Child1, Child0),
+/// }
+///
+/// enum SimilarRoot {
+///     ChildVariant0(Child0, Child1),
+///     ChildVariant1(Child1, Child0),
+/// }
+///
+/// map_enum!(SimilarRoot > Root {
+///     ChildVariant0 > ChildVariant0Rename = (a, b),
+///     ChildVariant1 = (a, b),
+/// });
+/// ```
+///
+/// This is especially useful when there are multiple external errors that all need to be
+/// mapped onto the same error.
+/// ```
+/// #![feature(more_qualified_paths)]
+/// use treeerror::map_enum;
+///
+/// #[derive(Debug)]
+/// pub struct WebError;
+///
+/// mod suberror0 {
+///     #[derive(Debug)]
+///     pub(super) struct MemoryError;
+///     #[derive(Debug)]
+///     pub(super) enum E {
+///         NotFound,
+///         Web(super::WebError),
+///         Memory(MemoryError),
+///     }
+/// }
+///
+/// mod suberror1 {
+///     #[derive(Debug)]
+///     pub(super) struct MemoryError;
+///     #[derive(Debug)]
+///     pub(super) enum E {
+///         Web(super::WebError),
+///         Memory(MemoryError),
+///         WeirdInternalErrorThatShouldNotBeSurfaced,
+///     }
+/// }
+///
+/// enum SharedError {
+///     NotFound,
+///     Web(WebError),
+///     Memory0(suberror0::MemoryError),
+///     Memory1(suberror1::MemoryError),
+/// }
+///
+/// map_enum!(suberror0::E > SharedError {
+///     @unit NotFound,
+///     Web,
+///     Memory > Memory0,
+/// });
+///
+/// map_enum!(suberror1::E > SharedError {
+///     Web,
+///     Memory > Memory1,
+/// } |e| {
+///     panic!("this should not happen... {e:?}")
+/// });
+///
+/// fn main() {}
+///
+/// ```
 #[macro_export]
 macro_rules! map_enum {
     // TODO Add support for specifying "dropping out" of some identities.
     ($from:path > $to:path {
         $($(@$m:ident)* $match:ident $(> $wrap:ident)? $(= ($($p:ident),+ $(,)?))? $($blk:block)?),+ $(,)?
-    } $(@catchrest $(|$e:ident|)? $catch:block)?) => {
+    } $($(|$e:ident|)? $catch:block)?) => {
         impl From<$from> for $to {
             fn from(e: $from) -> Self {
                 match e {
@@ -208,7 +384,7 @@ mod test {
 
         map_enum!(Submap > Fullmap {
             I > Ib,
-        } @catchrest |_ignored| {
+        } |_ignored| {
             Fullmap::Unit
         });
     }
