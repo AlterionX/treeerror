@@ -121,10 +121,12 @@
 /// ```
 ///
 /// This is especially useful when there are multiple external errors that all need to be
-/// mapped onto the same error.
+/// mapped onto the same error (for example, three crates that depend on `reqwest` which
+/// then individually wrap `reqwest`'s error in their own error). This can also be combined
+/// with `from_chain!` for more functionality.
 /// ```
 /// #![feature(more_qualified_paths)]
-/// use treeerror::map_enum;
+/// use treeerror::{map_enum, from_chain, from_many};
 ///
 /// #[derive(Debug)]
 /// pub struct WebError;
@@ -144,9 +146,13 @@
 ///     #[derive(Debug)]
 ///     pub(super) struct MemoryError;
 ///     #[derive(Debug)]
+///     pub(super) enum WrappedMemoryError {
+///         SomeError(MemoryError),
+///     }
+///     #[derive(Debug)]
 ///     pub(super) enum E {
 ///         Web(super::WebError),
-///         Memory(MemoryError),
+///         Memory(WrappedMemoryError),
 ///         WeirdInternalErrorThatShouldNotBeSurfaced,
 ///     }
 /// }
@@ -166,19 +172,28 @@
 ///
 /// map_enum!(suberror1::E > SharedError {
 ///     Web,
-///     Memory > Memory1,
+///     Memory = (a) {
+///         let suberror1::WrappedMemoryError::SomeError(e) = a else {
+///             unreachable!("only one variant exists");
+///         };
+///         SharedError::Memory1(e)
+///     },
 /// } |e| {
 ///     panic!("this should not happen... {e:?}")
 /// });
 ///
-/// fn main() {}
+/// from_chain!(SharedError : Memory0, suberror0::MemoryError);
+/// from_many!(SharedError = suberror1::WrappedMemoryError, suberror1::MemoryError > suberror1::E);
+/// from_chain!(suberror1::E : Memory, suberror1::WrappedMemoryError : SomeError, suberror1::MemoryError);
+///
+/// let m: SharedError = suberror1::MemoryError.into();
 ///
 /// ```
 #[macro_export]
 macro_rules! map_enum {
     // TODO Add support for specifying "dropping out" of some identities.
     ($from:path > $to:path {
-        $($(@$m:ident)* $match:ident $(> $wrap:ident)? $(= ($($p:ident),+ $(,)?))? $($blk:block)?),+ $(,)?
+        $($(@$m:ident)* $match:ident $(> $wrap:ident)? $(= ($($p:ident),*))? $($blk:block)?),+ $(,)?
     } $($(|$e:ident|)? $catch:block)?) => {
         impl From<$from> for $to {
             fn from(e: $from) -> Self {
@@ -188,14 +203,14 @@ macro_rules! map_enum {
                         (<$from>::$match)
                         __some_tok
                         $(@$m)*
-                        ($($($p),+)?)
+                        ($($($p),*)?)
                     )) => {
                         map_enum!(
                             @invocation expr
                             (map_enum!(@unwrap_opt $($wrap)? $match (<$to>::)))
                             __some_tok
                             $(@$m)*
-                            ($($($p),+)?)
+                            ($($($p),*)?)
                             $($blk)?
                         )
                     })+
@@ -208,6 +223,8 @@ macro_rules! map_enum {
         }
     };
 
+    // This generates the pattern matching the original value that's being converted
+    // from.
     (@invocation pat ($($path:tt)+) $escaped:ident @unit ($($tail:tt)*)) => (
         $($path)+
     );
@@ -218,6 +235,7 @@ macro_rules! map_enum {
         $($path)+ ($($tail)+)
     );
 
+    // This generates the value that it's being converted to.
     (@invocation expr ($($path:tt)+) $escaped:ident @unit ($($tail:tt)*)) => (
         $($path)+
     );
@@ -242,26 +260,23 @@ macro_rules! map_enum {
     (@invocation expr ($($path:tt)+) $escaped:ident $(@$m:ident)* ($($tail:tt)+)) => (
         $($path)+ ($($tail)+)
     );
-    (@invocation expr ($($path:tt)+) $escaped:ident $(@$m:ident)* ($($tail:tt)*) $blk:block) => (
+    (@invocation expr ($($path:tt)+) $escaped:ident $(@$m:ident)* ($($tail:tt)+) $blk:block) => (
         $blk
     );
 
-    (@paramlist ($($path:tt)+) $p0:ident $(,)?) => (
-        $($path)+ ($p0.into())
-    );
-    (@paramlist ($($path:tt)+) $p0:ident, $p1:ident $(,)?) => (
-        $($path)+ ($p0.into(), $p1.into())
-    );
-    (@paramlist ($($path:tt)+) $p0:ident, $p1:ident, $p2:ident $(,)?) => (
-        $($path)+ ($p0.into(), $p1.into(), $p2.into())
-    );
-    (@paramlist ($($path:tt)+) $p0:ident, $p1:ident, $p2:ident, $p3:ident $(,)?) => (
-        $($path)+ ($p0.into(), $p1.into(), $p2.into(), $p3.into())
+    // Helps generate conversions on all params being matched against.
+    (@paramlist ($($path:tt)+) $($params:ident),*) => (
+        $($path)+ ($($params.into()),*)
     );
 
+    // Needed to force the compiler to treat some things as specific kinds of tokens instead of
+    // generic token trees.
     (@coerce pat $stuff:pat) => ($stuff);
     (@coerce exprlist ($($stuff:expr),*)) => ($($stuff),*);
 
+    // Simulates an "if this is present use this else use that".
+    // The `tail` is necessary since macros need to return a full tree and we sometimes need
+    // information to make sure the tokens returned is a valid token tree.
     (@unwrap_opt $opt:ident $base:ident ($($tail:tt)*)) => ($($tail)* $opt);
     (@unwrap_opt $base:ident ($($tail:tt)*)) => ($($tail)* $base);
 }

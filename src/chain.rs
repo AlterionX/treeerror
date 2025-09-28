@@ -134,6 +134,8 @@ macro_rules! from_chain {
 /// // let a: A = C::from(D).into();
 /// let a: A = B::from(C::from(D)).into();
 /// ```
+///
+/// There is also a variant that does conversion via an intermediate type.
 #[macro_export]
 macro_rules! from_many {
     ($to:ty : $via:ident, $from:ty, $($continue:ty),+) => (
@@ -142,5 +144,12 @@ macro_rules! from_many {
     );
     ($to:ty : $via:ident, $from:ty $(,)?) => (
         $crate::from!($to = $via($from));
+    );
+    ($to:ty = $from:ty, $($continue:ty),+ > $via:ty) => (
+        $crate::from!($to = $from > $via);
+        $crate::from_many!($to = $($continue),+ > $via);
+    );
+    ($to:ty = $from:ty $(,)? > $via:ty) => (
+        $crate::from!($to = $from > $via);
     );
 }
