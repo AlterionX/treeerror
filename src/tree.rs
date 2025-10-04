@@ -387,6 +387,26 @@ mod test {
             Test {
                 A @flatunit,
             },
+            #[derive(Debug)]
+            Depth0 {
+                #[derive(Debug)]
+                Depth1 {
+                    #[derive(Debug)]
+                    Depth2 {
+                        #[derive(Debug)]
+                        Depth3 {
+                            #[derive(Debug)]
+                            Depth4 {
+                                #[derive(Debug)]
+                                Depth5 {
+                                    #[derive(Debug)]
+                                    Depth6 @unit
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 

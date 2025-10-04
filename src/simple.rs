@@ -64,6 +64,7 @@ macro_rules! from {
         });
     );
     ($to:ty = |$var:ident: $from:ty| $($tokens:expr)*) => (
+        #[automatically_derived]
         impl From<$from> for $to {
             fn from($var: $from) -> Self {
                 $($tokens)*
