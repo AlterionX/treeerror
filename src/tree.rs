@@ -13,8 +13,10 @@ macro_rules! treeerror {
                 $(#[$($node_cfg)+])*
                 $node $(@$wrapper_modifier)? $({ $($subtree)+ })? $(($wrapped))?
             }
+
             $crate::treeerror! {
                 @froms
+                ()
                 $node $(@$wrapper_modifier)? $({ $($subtree)+ })? $(($wrapped))?
             }
         )+
@@ -72,6 +74,7 @@ macro_rules! treeerror {
         $node:ident @unit
     } => {
         $(#[$($node_cfg)+])*
+        #[allow(dead_code)]
         pub struct $node;
     };
     // Generate enum, needs to munch variant by variant because stupid rules
@@ -115,7 +118,6 @@ macro_rules! treeerror {
         $(#[$($node_cfg:tt)+])*
         $node:ident @$some_modifier:ident $({ $($subtree:tt)+ })? $(($wrapped:ty))?
     } => {
-        compile_warn!(concat!($node, " was provided an unknown modifier", $some_modifier, ". assuming unit modifier passed"));
         $crate::treeerror! {
             @class
             $(#[$($node_cfg)*])*
@@ -254,6 +256,7 @@ macro_rules! treeerror {
         }
     } => {
         $(#[$($node_cfg)+])*
+        #[allow(dead_code)]
         pub enum $node {
             $($processed)*
         }
@@ -261,20 +264,102 @@ macro_rules! treeerror {
 
     {
         @froms
-        $($node:ident {
-            $(
-                $(#[$($node_cfg:tt)+])*
-                $subnode:ident $(@$wrapper_modifier:ident)? $({ $($subtree:tt)+ })? $(($wrapped:ty))?
-            ),* $(,)?
-        }),* $(,)?
-    } => {};
+        ($($parents:ident),* $(,)?)
+    } => {
+    };
+    // Peel off one by one, needs to be a separate rule due to duplicate comma parsing
+    {
+        @froms
+        ($($parents:ident),* $(,)?)
+        $(#[$($node_cfg:tt)+])*
+        $node:ident $(@$node_modifier:ident)? $({ $($subtree:tt)+ })? $(($wrapped:ty))? $(,)?
+        $($(
+            $(#[$($tail_cfg:tt)+])*
+            $tail_nodes:ident $(@$tail_modifier:ident)?  $({ $($tail_subtree:tt)+ })? $(($tail_wrapped:ty))?
+        ),+ $(,)?)?
+    } => {
+        $crate::treeerror! {
+            @maybe_from_impls $($node_modifier)?
+            ($node, $($parents),*)
+            $(($wrapped))?
+        }
+        $crate::treeerror! {
+            @froms
+            ($node, $($parents),*)
+            $($($subtree)+)?
+        }
+        $crate::treeerror! {
+            @froms
+            ($($parents),*)
+            $($(
+                $tail_nodes $(@$tail_modifier)?  $({ $($tail_subtree)+ })? $(($tail_wrapped))?
+            ),+)?
+        }
+    };
 
-    // AHHHHHH
-    // need `$stuff` to be "built" before declaring it as part of the enum because ... reasons
-    // (compiler needs each macro to emit "proper" rust code, so we can't emit
-    // `pub enum { macro!() }`
-    (@force_enum ($($stuff:tt)+) $name:ident) => { pub enum $name { $($stuff)+ } };
-    (@coerce_tt $($stuff:tt)+) => { $($stuff)+ };
+    {
+        @maybe_from_impls flatunit
+        ($($node:ident),* $(,)?)
+        $(($wrapped:ty))?
+    } => {};
+    {
+        @maybe_from_impls unit
+        ($($node:ident),* $(,)?)
+        $(($wrapped:ty))?
+    } => {
+        $crate::treeerror! {
+            @from_impls
+            ($($node),*)
+            $(($wrapped))?
+        }
+    };
+    {
+        @maybe_from_impls
+        ($($node:ident),* $(,)?)
+        $(($wrapped:ty))?
+    } => {
+        $crate::treeerror! {
+            @from_impls
+            ($($node),*)
+            $(($wrapped))?
+        }
+    };
+
+    {
+        @from_impls
+        ()
+        $(($wrapped:ty))?
+    } => {};
+    {
+        @from_impls
+        ($goal:ident $(,)?)
+        $(($wrapped:ty))?
+    } => {};
+    {
+        @from_impls
+        ($node:ident, $goal:ident $(,)?)
+        ($wrapped:ty)
+    } => {
+        $crate::from!($goal = $node($wrapped));
+    };
+    {
+        @from_impls
+        ($node:ident, $goal:ident $(,)?)
+    } => {
+        $crate::from!($goal = $node($node));
+    };
+    {
+        @from_impls
+        ($node:ident, $via:ident, $goal:ident $(,)? $($($tail:ident),+ $(,)?)?)
+        $(($wrapped:ty))?
+    } => {
+        $crate::from!($goal = $node > $via);
+        $crate::treeerror! {
+            @from_impls
+            ($node , $via $(, $($tail),+)?)
+            $(($wrapped))?
+        }
+    };
 }
 
 #[cfg(test)]
@@ -294,15 +379,40 @@ mod test {
                 #[derive(Debug)]
                 W2 @unit,
                 #[derive(Debug)]
-                W3 @unit,
+                W3 @flatunit,
             },
             Terminal(String),
+            LifetimeTerminal(&'static str),
+            #[derive(Debug)]
+            Test {
+                A @flatunit,
+            },
         }
     }
 
     #[test]
-    fn test_derived_traits() {
+    fn test_class_derivations() {
         assert_eq!(format!("{:?}", Hello::FlatWorld), "FlatWorld");
-        assert_eq!(format!("{:?}", World), "World");
+        assert_eq!(format!("{:?}", Hello::World(World)), "World(World)");
+        assert_eq!(format!("{:?}", Hello::OtherWorld(OtherWorld::W0(W0))), "OtherWorld(W0(W0))");
+        assert_eq!(format!("{:?}", Hello::OtherWorld(OtherWorld::W1(W1))), "OtherWorld(W1(W1))");
+        assert_eq!(format!("{:?}", Hello::OtherWorld(OtherWorld::W2(W2))), "OtherWorld(W2(W2))");
+        assert_eq!(format!("{:?}", Hello::OtherWorld(OtherWorld::W3)), "OtherWorld(W3)");
+        assert_eq!(format!("{:?}", Hello::Terminal("hi".to_owned())), "Terminal(\"hi\")");
+        assert_eq!(format!("{:?}", Hello::LifetimeTerminal("hi")), "LifetimeTerminal(\"hi\")");
+    }
+
+    #[test]
+    fn test_from_derivations() {
+        assert_eq!(format!("{:?}", Hello::FlatWorld), "FlatWorld");
+        assert_eq!(format!("{:?}", Hello::from(World)), "World(World)");
+        assert_eq!(format!("{:?}", OtherWorld::from(W0)), "W0(W0)");
+        assert_eq!(format!("{:?}", Hello::from(W0)), "OtherWorld(W0(W0))");
+        assert_eq!(format!("{:?}", OtherWorld::from(W1)), "W1(W1)");
+        assert_eq!(format!("{:?}", Hello::from(W1)), "OtherWorld(W1(W1))");
+        assert_eq!(format!("{:?}", OtherWorld::from(W2)), "W2(W2)");
+        assert_eq!(format!("{:?}", Hello::from(OtherWorld::W3)), "OtherWorld(W3)");
+        assert_eq!(format!("{:?}", Hello::from("hi".to_owned())), "Terminal(\"hi\")");
+        assert_eq!(format!("{:?}", Hello::from("hi")), "LifetimeTerminal(\"hi\")");
     }
 }
